@@ -37,5 +37,5 @@
 
 ## 验证
 
-运行 `node --test frontend/core.test.mjs frontend/plan.test.mjs frontend/render.test.mjs frontend/walk.test.mjs` 检查编辑、门窗、房间、三维几何和漫游逻辑。
+运行 `node --test frontend/core.test.mjs` 检查标定、旋转吸附、历史、方案导入校验。
 运行 `.venv\Scripts\python.exe backend\test_floorplan.py` 检查墙线识别回归。

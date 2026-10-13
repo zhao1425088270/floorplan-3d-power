@@ -195,13 +195,11 @@ floorplan-3d-project/
 在项目根目录执行。前端测试需另行安装支持 `node --test` 的 Node.js。
 
 ```powershell
-node --test frontend/core.test.mjs frontend/plan.test.mjs frontend/render.test.mjs frontend/walk.test.mjs
+node --test frontend/core.test.mjs frontend/render.test.mjs frontend/walk.test.mjs
 & .\.venv\Scripts\python.exe -m unittest discover -s backend -p test_floorplan.py
 ```
 
-覆盖比例标定、吸附、撤销重做、方案导入校验、门窗约束与三维洞口、闭合房间和凹形地面、家具几何与尺寸、行走方向和速度，以及墙线识别回归。
-
-可选浏览器回归：安装或使用已有 Playwright 后运行 `node frontend/editor.smoke.cjs`。脚本会在本机空闲端口启动临时静态服务，结束时自动关闭，默认浏览器为 Edge。可通过 `FLOORPLAN_TEST_URL` 指定已有服务，也可用 `FLOORPLAN_BROWSER_CHANNEL` 和 `PLAYWRIGHT_MODULE_PATH` 指定浏览器及已有 Playwright 模块目录。测试使用独立浏览器会话，不读取用户已有方案。
+覆盖比例标定、旋转吸附、撤销重做、方案导入校验、家具几何与尺寸、行走方向和速度，以及墙线识别回归。
 
 ## 常见问题
 

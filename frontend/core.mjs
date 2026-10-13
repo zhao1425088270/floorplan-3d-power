@@ -73,8 +73,15 @@ export function calibration(a,b,millimeters) {
   const pixels=distance(a,b);
   if(pixels<2 || !Number.isFinite(millimeters) || millimeters<=0 || millimeters>1000000) throw new Error('请选择两个不同的点，并输入有效的实际长度。');
   const factor=millimeters/pixels;
-  if(factor<0.1 || factor>1000) throw new Error('标定比例超出范围，请检查长度单位是否为毫米。');
+  if(factor<0.1 || factor>1000) throw new Error('标定比例超出范围，请检查输入长度和所选单位是否匹配。');
   return factor;
+}
+export function createCalibration(a,b,length,unit='mm') {
+  const multiplier={mm:1,cm:10,m:1000}[unit];
+  if(!Number.isFinite(multiplier)||!Number.isFinite(length)||length<=0)throw new Error('请输入原图标注的实际长度，并检查单位。');
+  if(![a,b].every(p=>p&&['x','z'].every(k=>number(p[k],-100000,100000))))throw new Error('请先在原图上选取两个参考端点。');
+  const millimeters=length*multiplier;
+  return {mmPerPixel:calibration(a,b,millimeters),reference:{start:{x:a.x,z:a.z},end:{x:b.x,z:b.z},millimeters}};
 }
 export class History {
   constructor(limit=60) { this.past=[]; this.future=[]; this.limit=limit; }
@@ -91,6 +98,11 @@ export function validateDocument(value) {
   if(!value || value.version!==1 || !value.plan || !Array.isArray(value.plan.walls) || !Array.isArray(value.furniture)) throw new Error('不是受支持的家装方案文件。');
   const d=clone(value), bounds=d.plan.bounds;
   if(!number(d.mmPerPixel,0.1,1000) || !bounds || !['x','y'].every(k=>number(bounds[k],-100000,100000)) || !['width','height'].every(k=>number(bounds[k],1,100000))) throw new Error('方案比例或范围不正确。');
+  if(d.calibrationReference!==undefined){
+    const r=d.calibrationReference;if(!r)throw new Error('标定参考线不正确。');
+    const c=createCalibration(r.start,r.end,r.millimeters);
+    if(!d.calibrated||Math.abs(c.mmPerPixel-d.mmPerPixel)>1e-6)throw new Error('标定参考线与方案比例不一致，请重新标定。');
+  }
   if(!d.plan.image_size || !['width','height'].every(k=>number(d.plan.image_size[k],1,100000))) throw new Error('图片尺寸不正确。');
   if(d.plan.walls.length>3000 || d.furniture.length>500) throw new Error('方案包含过多对象。');
   d.rooms ??= []; d.measurements ??= []; d.openings ??= []; d.autoRooms=!!d.autoRooms;

@@ -21,5 +21,3 @@
 - 研究 [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer) 的路径追踪、环境光和室内示例。2026-10-12 查看时主线要求 WebGPU；本次未安装，也没有将当前阴影冒称为路径追踪。
 - 参考 [drei-vanilla](https://github.com/pmndrs/drei-vanilla) 的环境与材质辅助方案。本次未复制其代码。
 - 家具细节和程序纹理为本项目生成，未使用外部家具模型或图片资产。
-
-验证：`node --test frontend/core.test.mjs frontend/render.test.mjs`，涵盖编辑数据、导入校验、几何有效性、倒角边界和家具毫米到米的转换。

@@ -1,3 +1,5 @@
+import {openingError,roomArea,polygonBounds,roomPolygon,isSimplePolygon,wallLength} from './plan.mjs';
+
 export const CATALOG = [
   {type:'sofa',name:'三人沙发',category:'客厅',width:2400,depth:900,height:850,color:'#7f9f99'},
   {type:'armchair',name:'单人沙发',category:'客厅',width:850,depth:850,height:800,color:'#b6957c'},
@@ -23,12 +25,19 @@ export const normalizeAngle = value => ((Number(value)%360)+360)%360;
 export function emptyDocument() {
   return {version:1,title:'未命名方案',mmPerPixel:10,calibrated:false,image:null,
     plan:{walls:[],bounds:{x:0,y:0,width:1000,height:800},image_size:{width:1000,height:800}},
-    furniture:[],rooms:[],measurements:[]};
+    furniture:[],rooms:[],measurements:[],openings:[],autoRooms:false};
 }
 export function newFurniture(type,x,z) {
   const entry = CATALOG.find(item => item.type===type);
   if (!entry) throw new Error('未知家具类型');
   return {...entry,id:uid(),x,z,rotation:0,locked:false};
+}
+export function newOpening(type,wall,offset,mmPerPixel){
+  if(!['door','window'].includes(type))throw new Error('未知门窗类型');
+  const length=wallLength(wall)*mmPerPixel,wallHeight=wall.height??3000;
+  if(length<100)throw new Error('墙体过短，至少需要 100 mm 才能放置门窗。');
+  const width=Math.min(type==='door'?900:1200,length),sillHeight=type==='door'?0:Math.min(900,wallHeight-100);
+  return {id:uid(),type,wallId:wall.id,offset:Math.max(width/2,Math.min(length-width/2,offset)),width,height:Math.min(type==='door'?2100:1200,wallHeight-sillHeight),sillHeight};
 }
 export function distance(a,b) { return Math.hypot(a.x-b.x,a.z-b.z); }
 export function snapPoint(point,mmPerPixel,enabled=true) {
@@ -84,20 +93,32 @@ export function validateDocument(value) {
   if(!number(d.mmPerPixel,0.1,1000) || !bounds || !['x','y'].every(k=>number(bounds[k],-100000,100000)) || !['width','height'].every(k=>number(bounds[k],1,100000))) throw new Error('方案比例或范围不正确。');
   if(!d.plan.image_size || !['width','height'].every(k=>number(d.plan.image_size[k],1,100000))) throw new Error('图片尺寸不正确。');
   if(d.plan.walls.length>3000 || d.furniture.length>500) throw new Error('方案包含过多对象。');
-  d.rooms ||= []; d.measurements ||= [];
+  d.rooms ??= []; d.measurements ??= []; d.openings ??= []; d.autoRooms=!!d.autoRooms;
   if(!Array.isArray(d.rooms) || !Array.isArray(d.measurements) || d.rooms.length>200 || d.measurements.length>500) throw new Error('区域或测量数据不正确。');
+  if(!Array.isArray(d.openings)||d.openings.length>500)throw new Error('门窗最多支持 500 个。');
+  if(d.autoRooms&&d.plan.walls.length>600)throw new Error('自动房间模式最多支持 600 段墙。');
   const ids=new Set();
-  for(const item of [...d.plan.walls,...d.furniture,...d.rooms,...d.measurements]) {
-    if(typeof item.id!=='string' || ids.has(item.id)) throw new Error('方案对象编号不正确。');
+  for(const item of [...d.plan.walls,...d.furniture,...d.rooms,...d.measurements,...d.openings]) {
+    if(!item||typeof item.id!=='string' || ids.has(item.id)) throw new Error('方案对象编号不正确。');
     ids.add(item.id);
   }
   for(const wall of d.plan.walls) if(!['x1','z1','x2','z2'].every(k=>number(wall[k],-100000,100000)) || !number(wall.thickness,0.1,10000) || Math.hypot(wall.x2-wall.x1,wall.z2-wall.z1)<0.1) throw new Error('墙体数据不正确。');
+  for(const wall of d.plan.walls){
+    if(wall.height!==undefined&&!number(wall.height,100,10000))throw new Error('墙高应为 100–10000 mm。');
+    if(wall.bearing!==undefined&&typeof wall.bearing!=='boolean')throw new Error('墙体标记不正确。');
+  }
+  for(const opening of d.openings){const error=openingError(opening,d);if(error)throw new Error(error);}
   for(const item of d.furniture) {
     if(!CATALOG.some(entry=>entry.type===item.type) || !['width','depth','height'].every(k=>number(item[k],10,10000)) || !['x','z'].every(k=>number(item[k],-100000,100000)) || !number(item.rotation,-36000,36000) || !/^#[0-9a-f]{6}$/i.test(item.color)) throw new Error('家具尺寸或类型不正确。');
     item.rotation=normalizeAngle(item.rotation); item.name=String(item.name||'家具').slice(0,40); item.locked=!!item.locked;
   }
   for(const room of d.rooms) {
+    if(room.polygon!==undefined){
+      if(!Array.isArray(room.polygon)||room.polygon.length<3||room.polygon.length>1200||!room.polygon.every(p=>p&&number(p.x,-100000,100000)&&number(p.z,-100000,100000))||roomArea(room)<1||!isSimplePolygon(room.polygon))throw new Error('房间轮廓不正确，轮廓不能自交。');
+      Object.assign(room,polygonBounds(roomPolygon(room)));
+    }
     if(!['x','z'].every(k=>number(room[k],-100000,100000)) || !['width','depth'].every(k=>number(room[k],1,100000)) || !['wood','tile','plain'].includes(room.material)) throw new Error('房间区域数据不正确。');
+    if(room.source==='walls'&&(!room.polygon||!Array.isArray(room.wallIds)||!room.wallIds.every(id=>d.plan.walls.some(w=>w.id===id))))throw new Error('房间关联墙体不正确。');
     room.name=String(room.name||'房间').slice(0,40);
   }
   for(const m of d.measurements) if(!['x1','z1','x2','z2'].every(k=>number(m[k],-100000,100000))) throw new Error('测量数据不正确。');

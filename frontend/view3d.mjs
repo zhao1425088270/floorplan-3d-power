@@ -1,6 +1,8 @@
 import {WalkControls} from './walk.mjs';
 import {makeFurniture} from './furniture.mjs';
 import {Surfaces} from './surfaces.mjs';
+import {documentBounds,roomArea,roomInteriorPoint} from './plan.mjs';
+import {makeWall,roomGeometry} from './building.mjs';
 const T=window.THREE;
 export class View3D {
   constructor(element,onSelect){
@@ -48,22 +50,22 @@ export class View3D {
     this.root.clear();this.roomLights.clear();this.ceilings.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});this.ceilings.clear();
   }
   update(doc,selection,refit=false){
-    this.doc=doc;this.clear();const b=doc.plan.bounds,s=doc.mmPerPixel/1000,cx=b.x+b.width/2,cz=b.y+b.height/2;
+    this.doc=doc;this.clear();const b=documentBounds(doc),s=doc.mmPerPixel/1000,cx=b.x+b.width/2,cz=b.y+b.height/2;
     const material=(kind,color)=>this.surfaces.material(kind,color);
     const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.receiveShadow=true;m.castShadow=true;this.root.add(m);return m;};
     box(b.width*s+.3,.10,b.height*s+.3,0,-.075,0,material('plaster','#e5e1d8')).castShadow=false;
     for(const r of doc.rooms){
       const mat=material(r.material==='plain'?'plaster':r.material,'#ffffff');
-      if(mat.map){mat.map=mat.map.clone();mat.map.needsUpdate=true;mat.map.repeat.set(r.width*s/(r.material==='tile'?.65:2.4),r.depth*s/(r.material==='tile'?.65:2.4));mat.bumpMap=mat.map;}
-      const mesh=box(r.width*s,.035,r.depth*s,(r.x+r.width/2-cx)*s,-.012,(r.z+r.depth/2-cz)*s,mat);mesh.userData={kind:'room',id:r.id};
-      const ceiling=new T.Mesh(new T.BoxGeometry(r.width*s,.035,r.depth*s),material('plaster','#f7f4ef'));ceiling.position.set((r.x+r.width/2-cx)*s,3.02,(r.z+r.depth/2-cz)*s);this.ceilings.add(ceiling);
-      if(this.roomLights.children.length<8){const lamp=new T.PointLight(0xffe4c0,this.lighting==='warm'?.65:.12,Math.max(r.width,r.depth)*s*1.8,2);lamp.position.set((r.x+r.width/2-cx)*s,2.65,(r.z+r.depth/2-cz)*s);this.roomLights.add(lamp);}
+      if(mat.map){mat.map=mat.map.clone();mat.map.needsUpdate=true;const tile=r.material==='tile'?.65:2.4;mat.map.repeat.set(1/tile,1/tile);mat.bumpMap=mat.map;}
+      const mesh=new T.Mesh(roomGeometry(T,r,s,cx,cz),mat);mesh.position.y=.006;mesh.receiveShadow=true;mesh.userData={kind:'room',id:r.id};this.root.add(mesh);
+      const roomWalls=doc.plan.walls.filter(w=>r.wallIds?.includes(w.id)),height=roomWalls.length?Math.min(...roomWalls.map(w=>w.height??3000))/1000:3;
+      const ceilingMaterial=material('plaster','#f7f4ef');ceilingMaterial.side=T.DoubleSide;
+      const ceiling=new T.Mesh(roomGeometry(T,r,s,cx,cz),ceilingMaterial);ceiling.position.y=height+.02;this.ceilings.add(ceiling);
+      const center=roomInteriorPoint(r);
+      if(this.roomLights.children.length<8){const lamp=new T.PointLight(0xffe4c0,this.lighting==='warm'?.65:.12,Math.max(r.width,r.depth)*s*1.8,2);lamp.position.set((center.x-cx)*s,Math.max(.1,height-.35),(center.z-cz)*s);this.roomLights.add(lamp);}
     }
     for(const w of doc.plan.walls){
-      const dx=(w.x2-w.x1)*s,dz=(w.z2-w.z1)*s,t=Math.max(.03,w.thickness*s),h=this.low?.65:3,length=Math.hypot(dx,dz)+t;
-      const x=((w.x1+w.x2)/2-cx)*s,z=((w.z1+w.z2)/2-cz)*s;
-      const mesh=box(length,h,t,x,h/2,z,material('plaster',selection?.id===w.id?'#dec19e':'#f0ece3'));mesh.rotation.y=-Math.atan2(dz,dx);mesh.userData={kind:'wall',id:w.id};
-      const skirt=box(length,.085,t+.016,x,.045,z,material('wood','#d4c8b5'));skirt.rotation.y=mesh.rotation.y;skirt.userData={kind:'wall',id:w.id};
+      const wall=makeWall(T,w,doc,this.surfaces,this.low,selection?.id);wall.position.set((w.x1-cx)*s,0,(w.z1-cz)*s);this.root.add(wall);
     }
     for(const f of [...doc.furniture].sort((a,b)=>(a.type==='rug'?-1:0)-(b.type==='rug'?-1:0))){
       const object=makeFurniture(T,f,this.surfaces);
@@ -88,7 +90,7 @@ export class View3D {
   fit(mode='iso'){
     if(!this.doc)return;this.mode=mode;this.ceilings.visible=false;
     if(!this.camera.isOrthographicCamera)this.setCamera(new T.OrthographicCamera(-10,10,10,-10,.05,200));
-    const b=this.doc.plan.bounds,s=this.doc.mmPerPixel/1000,aspect=this.element.clientWidth/Math.max(1,this.element.clientHeight);
+    const b=documentBounds(this.doc),s=this.doc.mmPerPixel/1000,aspect=this.element.clientWidth/Math.max(1,this.element.clientHeight);
     this.controls.target.set(0,.5,0);const distance=Math.max(b.width*s,b.height*s)*3+10;
     this.camera.position.copy(mode==='top'?new T.Vector3(0,distance,.001):new T.Vector3(.8,1.65,1.15).normalize().multiplyScalar(distance));this.camera.lookAt(this.controls.target);this.camera.updateMatrixWorld(true);
     const bounds=new T.Box3().setFromObject(this.root),projected=new T.Box3();
@@ -98,11 +100,12 @@ export class View3D {
   }
   interior(room=null){
     if(!this.doc)return;
-    const b=this.doc.plan.bounds,s=this.doc.mmPerPixel/1000,cx=b.x+b.width/2,cz=b.y+b.height/2;
-    room=room||this.doc.rooms.find(r=>/客/.test(r.name))||this.doc.rooms.reduce((a,r)=>!a||r.width*r.depth>a.width*a.depth?r:a,null)||{x:b.x,z:b.y,width:b.width,depth:b.height};
+    const b=documentBounds(this.doc),s=this.doc.mmPerPixel/1000,cx=b.x+b.width/2,cz=b.y+b.height/2;
+    room=room||this.doc.rooms.find(r=>/客/.test(r.name))||this.doc.rooms.reduce((a,r)=>!a||roomArea(r)>roomArea(a)?r:a,null)||{x:b.x,z:b.y,width:b.width,depth:b.height};
     this.mode='interior';this.ceilings.visible=!this.low;this.setCamera(new T.PerspectiveCamera(65,this.element.clientWidth/Math.max(1,this.element.clientHeight),.03,200));
-    this.camera.position.set((room.x+room.width*.88-cx)*s,1.5,(room.z+room.depth*.88-cz)*s);
-    this.controls.target.set((room.x+room.width*.30-cx)*s,1.0,(room.z+room.depth*.30-cz)*s);this.controls.maxPolarAngle=Math.PI*.85;this.controls.update();this.controls.enabled=false;this.walk?.canvas.focus({preventScroll:true});this.dirty=true;
+    const center=roomInteriorPoint(room);
+    this.camera.position.set((center.x-cx)*s,1.5,(center.z-cz)*s);
+    this.controls.target.copy(this.camera.position).add(new T.Vector3(-1,-.15,-1));this.controls.maxPolarAngle=Math.PI*.85;this.controls.update();this.controls.enabled=false;this.walk?.canvas.focus({preventScroll:true});this.dirty=true;
   }
   screenshot(){this.draw();return this.renderer.domElement.toDataURL('image/png');}
 }

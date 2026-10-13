@@ -1,4 +1,5 @@
 import {wallSections,wallLength,roomPolygon} from './plan.mjs';
+import {openingLeaf} from './editing.mjs';
 
 export function makeWall(T,wall,doc,surfaces,low=false,selectedId=null){
   const group=new T.Group(),length=wallLength(wall)*doc.mmPerPixel,depth=wall.thickness*doc.mmPerPixel/1000;
@@ -22,14 +23,16 @@ export function makeWall(T,wall,doc,surfaces,low=false,selectedId=null){
     const width=o.width/1000,h=top-bottom,rail=Math.min(.05,width/4,h/4),color=selectedId===o.id?'#c9874c':o.type==='door'?'#b29a7d':'#edf0e9';
     for(const side of [-1,1])box(frame,rail,h,depth+.025,side*(width-rail)/2,bottom+h/2,0,'wood',color);
     if(o.sillHeight+o.height<=height)box(frame,width,rail,depth+.025,0,top-rail/2,0,'wood',color);
+    const pose=openingLeaf(o),pivot=new T.Group(),leafWidth=Math.max(.001,width-2*rail);
+    pivot.position.x=-pose.direction*(width/2-rail);pivot.rotation.y=-Math.atan2(pose.side*Math.sin(pose.angle),pose.direction*Math.cos(pose.angle));frame.add(pivot);
     if(o.type==='window'){
       box(frame,width,rail,depth+.025,0,bottom+rail/2,0,'wood',color);
-      box(frame,rail,h,.035,0,bottom+h/2,0,'metal',color);
-      const glass=new T.Mesh(new T.BoxGeometry(Math.max(.001,width-2*rail),Math.max(.001,h-2*rail),.008),new T.MeshPhysicalMaterial({color:0xadcfd8,transparent:true,opacity:.22,roughness:.08,depthWrite:false}));
-      glass.position.y=bottom+h/2;frame.add(glass);
+      const glass=new T.Mesh(new T.BoxGeometry(leafWidth,Math.max(.001,h-2*rail),.008),new T.MeshPhysicalMaterial({color:0xadcfd8,transparent:true,opacity:.22,roughness:.08,depthWrite:false}));
+      glass.position.set(leafWidth/2,bottom+h/2,0);pivot.add(glass);
+      for(const x of [0,leafWidth])box(pivot,.025,h,.035,x,bottom+h/2,0,'metal',color);
+      for(const y of [bottom+rail/2,top-rail/2])box(pivot,leafWidth,.025,.035,leafWidth/2,y,0,'metal',color);
     }else{
-      // Open leaf matches the swing symbol in plan view and leaves the passage visible.
-      box(frame,.035,Math.max(.001,h-rail),Math.max(.001,width-2*rail),-width/2+rail,bottom+(h-rail)/2,(width-2*rail)/2,'wood',color);
+      box(pivot,leafWidth,Math.max(.001,h-rail),.035,leafWidth/2,bottom+(h-rail)/2,0,'wood',color);
     }
   }
   return group;

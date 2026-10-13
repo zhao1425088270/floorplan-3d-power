@@ -26,7 +26,7 @@ export class View3D {
     element.addEventListener('pointerup',e=>{
       if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>5)return;
       const b=element.getBoundingClientRect();this.ray.setFromCamera(new T.Vector2((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1),this.camera);
-      for(const hit of this.ray.intersectObjects(this.root.children,true)){let o=hit.object;while(o&&!o.userData.id)o=o.parent;if(o?.userData.id){onSelect(o.userData.kind,o.userData.id);break;}}
+      for(const hit of this.ray.intersectObjects(this.root.children,true)){let o=hit.object;while(o&&!o.userData.id)o=o.parent;if(o?.userData.id){onSelect(o.userData.kind,o.userData.id,e);break;}}
     });
     this.walk=new WalkControls(element,()=>this.camera,()=>this.controls.target,()=>this.mode==='interior'&&!!element.clientWidth&&!!element.clientHeight,()=>{this.dirty=true;},T);
     let last=performance.now();
@@ -70,8 +70,8 @@ export class View3D {
     for(const f of [...doc.furniture].sort((a,b)=>(a.type==='rug'?-1:0)-(b.type==='rug'?-1:0))){
       const object=makeFurniture(T,f,this.surfaces);
       if(this.low){const height=new T.Box3().setFromObject(object).max.y;if(height>1.05)object.scale.y=1.05/height;}
-      object.position.set((f.x-cx)*s,.008,(f.z-cz)*s);this.root.add(object);
-      if(selection?.id===f.id)this.root.add(new T.BoxHelper(object,0xc9874c));
+      object.position.set((f.x-cx)*s,.008+(f.elevation??0)/1000,(f.z-cz)*s);this.root.add(object);
+      if(selection?.kind==='furniture'&&(selection.ids||[selection.id]).includes(f.id))this.root.add(new T.BoxHelper(object,0xc9874c));
     }
     const extent=Math.max(b.width,b.height)*s*.75+2;
     Object.assign(this.sun.shadow.camera,{left:-extent,right:extent,top:extent,bottom:-extent,near:.5,far:80});this.sun.shadow.camera.updateProjectionMatrix();

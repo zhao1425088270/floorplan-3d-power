@@ -30,7 +30,7 @@ export function emptyDocument() {
 export function newFurniture(type,x,z) {
   const entry = CATALOG.find(item => item.type===type);
   if (!entry) throw new Error('未知家具类型');
-  return {...entry,id:uid(),x,z,rotation:0,locked:false};
+  return {...entry,id:uid(),x,z,rotation:0,elevation:0,locked:false};
 }
 export function newOpening(type,wall,offset,mmPerPixel){
   if(!['door','window'].includes(type))throw new Error('未知门窗类型');
@@ -120,9 +120,16 @@ export function validateDocument(value) {
     if(wall.bearing!==undefined&&typeof wall.bearing!=='boolean')throw new Error('墙体标记不正确。');
   }
   for(const opening of d.openings){const error=openingError(opening,d);if(error)throw new Error(error);}
+  for(const o of d.openings){
+    if(o.hinge!==undefined&&!['start','end'].includes(o.hinge))throw new Error('门窗铰链位置不正确。');
+    if(o.swing!==undefined&&![1,-1].includes(o.swing))throw new Error('门窗开启侧不正确。');
+    if(o.openAngle!==undefined&&!number(o.openAngle,0,90))throw new Error('门窗开启角度应为 0–90°。');
+  }
   for(const item of d.furniture) {
     if(!CATALOG.some(entry=>entry.type===item.type) || !['width','depth','height'].every(k=>number(item[k],10,10000)) || !['x','z'].every(k=>number(item[k],-100000,100000)) || !number(item.rotation,-36000,36000) || !/^#[0-9a-f]{6}$/i.test(item.color)) throw new Error('家具尺寸或类型不正确。');
     item.rotation=normalizeAngle(item.rotation); item.name=String(item.name||'家具').slice(0,40); item.locked=!!item.locked;
+    if(item.elevation!==undefined&&!number(item.elevation,0,10000))throw new Error('家具离地高度应为 0–10000 mm。');
+    if(item.groupId!==undefined&&(typeof item.groupId!=='string'||!item.groupId.length||item.groupId.length>80))throw new Error('家具组合编号不正确。');
   }
   for(const room of d.rooms) {
     if(room.polygon!==undefined){

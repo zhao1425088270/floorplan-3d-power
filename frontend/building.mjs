@@ -1,5 +1,6 @@
 import {wallSections,wallLength,roomPolygon} from './plan.mjs';
 import {openingLeaf} from './editing.mjs';
+import {wallFinish,skirting} from './finishes.mjs';
 
 export function makeWall(T,wall,doc,surfaces,low=false,selectedId=null){
   const group=new T.Group(),length=wallLength(wall)*doc.mmPerPixel,depth=wall.thickness*doc.mmPerPixel/1000;
@@ -12,10 +13,17 @@ export function makeWall(T,wall,doc,surfaces,low=false,selectedId=null){
   };
   for(const piece of wallSections(wall,doc.openings,doc.mmPerPixel,height)){
     const left=piece.start===0?depth/2:0,right=piece.end===length?depth/2:0;
-    box(group,(piece.end-piece.start)/1000+left+right,(piece.top-piece.bottom)/1000,depth,(piece.start+piece.end)/2000+(right-left)/2,(piece.top+piece.bottom)/2000,0,'plaster',selectedId===wall.id?'#dec19e':'#f0ece3');
+    const width=(piece.end-piece.start)/1000+left+right,h=(piece.top-piece.bottom)/1000;
+    const mesh=box(group,width,h,depth,(piece.start+piece.end)/2000+(right-left)/2,(piece.top+piece.bottom)/2000,0,'plaster','#f0ece3');
+    const cap=mesh.material;
+    const finish=side=>{const f=wallFinish(wall,side);return surfaces.finish(f.material,f.color,width,h);};
+    // BoxGeometry faces: +X,-X,+Y,-Y,+Z,-Z. +Z is the right side in the plan.
+    mesh.material=[cap,cap,cap,cap,finish('right'),finish('left')];
+    if(selectedId===wall.id)for(const mat of mesh.material)mat.emissive?.setHex(0x241407);
   }
-  for(const piece of wallSections(wall,doc.openings,doc.mmPerPixel,Math.min(height,85))){
-    box(group,(piece.end-piece.start)/1000,(piece.top-piece.bottom)/1000,depth+.016,(piece.start+piece.end)/2000,(piece.top+piece.bottom)/2000,0,'wood','#d4c8b5');
+  const trim=skirting(wall);
+  for(const piece of trim.enabled?wallSections(wall,doc.openings,doc.mmPerPixel,Math.min(height,trim.height)):[]){
+    box(group,(piece.end-piece.start)/1000,(piece.top-piece.bottom)/1000,depth+.016,(piece.start+piece.end)/2000,(piece.top+piece.bottom)/2000,0,'wood',trim.color);
   }
   for(const o of doc.openings.filter(o=>o.wallId===wall.id)){
     const bottom=o.sillHeight/1000,top=Math.min(height,o.sillHeight+o.height)/1000;if(top<=bottom)continue;

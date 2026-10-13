@@ -148,7 +148,7 @@ export function refreshRooms(doc,makeId){
   doc.rooms=[...doc.rooms.filter(r=>r.source!=='walls'),...found.map((room,index)=>{
     const center=roomInteriorPoint(room),previous=old.find(r=>!used.has(r.id)&&r.wallIds.length===room.wallIds.length&&r.wallIds.every(id=>room.wallIds.includes(id)))||old.find(r=>!used.has(r.id)&&pointInPolygon(center,roomPolygon(r)));
     if(previous)used.add(previous.id);
-    return {...room,id:previous?.id||makeId(),name:previous?.name||`房间 ${index+1}`,material:previous?.material||'wood'};
+    return {...room,id:previous?.id||makeId(),name:previous?.name||`房间 ${index+1}`,material:previous?.material||'wood',...(previous?.floorAngle!==undefined?{floorAngle:previous.floorAngle}:{}),...(previous?.ceiling?{ceiling:{...previous.ceiling}}:{})};
   })];
   return found.length;
 }

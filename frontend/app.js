@@ -3,6 +3,8 @@ import {furnitureSymbol} from './furniture.mjs';
 import {View3D} from './view3d.mjs';
 import {documentBounds,wallLength,nearestWall,snapWallPoint,openingError,roomPolygon,roomArea,roomInteriorPoint,moveWallEndpoints,refreshRooms} from './plan.mjs';
 import {splitWall,nearestEndpoint,connectEndpoints,furnitureIds,pruneGroups,groupFurniture,ungroupFurniture,translateFurniture,rotateFurniture,copyFurniture,openingLeaf,layoutIssues} from './editing.mjs';
+import {FINISHES,wallFinish,skirting,ceiling} from './finishes.mjs';
+import {inspectGLB,MODEL_LIMIT} from './models.mjs';
 
 const $=id=>document.getElementById(id), svg=$('plan'), history=new History();
 const STORE='floorplan-designer-v1';
@@ -13,7 +15,7 @@ let restored=false;
 let restoreError='',originalCache='';
 try {originalCache=localStorage.getItem(STORE);if(originalCache){doc=validateDocument(JSON.parse(originalCache));restored=true;}}catch(error){restoreError='原有缓存无法恢复，自动保存已暂停；请点击「备份原缓存」保留原文件后继续。';console.warn('Local plan unavailable:',error.message);}
 function message(text,error=false){$('status').textContent=text;$('status').className=error?'error':'';}
-try{three=new View3D($('viewport'),(kind,id,event)=>{selectObject(kind,id,event?.shiftKey);render();});}catch(error){$('viewport').textContent='三维视图暂不可用，请检查 Three.js 网络加载及 WebGL 支持。';console.error(error);}
+try{three=new View3D($('viewport'),(kind,id,event)=>{selectObject(kind,id,event?.shiftKey);render();},text=>message(text,true));}catch(error){$('viewport').textContent='三维视图暂不可用，请检查本地 Three.js 文件及 WebGL 支持。';console.error(error);}
 
 function save(){
   if(restoreError){$('save-state').textContent='自动保存暂停：请先备份原缓存';return;}
@@ -62,7 +64,7 @@ function setTool(value,type=null){
   if(doc.image&&!doc.calibrated&&['place','door','window'].includes(value)){value='calibrate';type=null;}
   tool=value;placing=type;points=[];hover=null;connectTarget=null;svg.dataset.tool=value;
   document.querySelectorAll('[data-tool]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.tool===value));
-  const hints={select:'选择并拖动对象；R 旋转，Delete 删除。',wall:'依次点击墙线的起点和终点；按住 Shift 可画斜墙。',room:'点击房间区域的两个对角；这是手工区域，不会自动识别房间。',measure:'点击两个点，记录它们之间的距离。',calibrate:'在原图上点击一段已知尺寸的两个端点，再输入实际毫米数。',place:`点击平面图放置${CATALOG.find(i=>i.type===type)?.name||'家具'}，或按 Esc 取消。`};
+  const hints={select:'选择并拖动对象；R 旋转，Delete 删除。',wall:'依次点击墙线的起点和终点；按住 Shift 可画斜墙。',room:'点击房间区域的两个对角；这是手工区域，不会自动识别房间。',measure:'点击两个点，记录它们之间的距离。',calibrate:'在原图上点击一段已知尺寸的两个端点，再输入实际毫米数。',place:`点击平面图放置${catalogEntries().find(i=>i.key===type)?.name||'家具'}，或按 Esc 取消。`};
   hints.door='点击墙体放置门；选中后可拖动或调整洞口尺寸。';hints.window='点击墙体放置窗；选中后可设置窗台高度。';
   hints.split='点击墙上需要分割的位置；不能切穿门窗洞口。';hints.connect='先点击需要移动的墙端点，再点击另一段墙的目标端点。';
   hints.calibrate='请点击原图上一段已标注尺寸的两个端点，再输入该段真实长度和单位。标定完成后再放家具。';
@@ -95,10 +97,11 @@ function openCalibration(){
   $('calibration-current').textContent=`所选参考线在当前比例下${doc.calibrated?'':'暂'}为 ${meters(distance(points[0],points[1])*doc.mmPerPixel)} m，请与原图标注核对。`;
   renderPlan();previewCalibration();$('calibration-dialog').showModal();$('real-distance').focus();
 }
+function catalogEntries(){return [...CATALOG.map(f=>({...f,key:f.type})),...(doc.models||[]).map(m=>({...m,key:`model:${m.id}`,type:'model',category:'导入模型',color:'#9caeba'}))];}
 function renderCatalog(){
-  const category=$('category').value,items=CATALOG.filter(f=>category==='全部家具'||f.category===category);
-  $('catalog-count').textContent=`${CATALOG.length} items`;
-  $('catalog-items').innerHTML=items.map(f=>`<button class="furniture-card ${placing===f.type?'active':''}" data-type="${f.type}" draggable="true" title="放置${f.name}"><svg viewBox="0 0 110 110" aria-hidden="true"><g transform="translate(5 5)">${furnitureSymbol(f.type,f.color)}</g></svg><b>${f.name}</b><small>${f.width} × ${f.depth}</small></button>`).join('');
+  const category=$('category').value,query=$('catalog-search').value.trim().toLocaleLowerCase(),all=catalogEntries(),items=all.filter(f=>(category==='全部家具'||f.category===category)&&`${f.name} ${f.category} ${f.type}`.toLocaleLowerCase().includes(query));
+  $('catalog-count').textContent=`${items.length} / ${all.length}`;
+  $('catalog-items').innerHTML=items.length?items.map(f=>`<button class="furniture-card ${placing===f.key?'active':''}" data-type="${esc(f.key)}" draggable="true" title="放置${esc(f.name)}"><svg viewBox="0 0 110 110" aria-hidden="true"><g transform="translate(5 5)">${furnitureSymbol(f.type,f.color)}</g></svg><b>${esc(f.name)}</b><small>${f.width} × ${f.depth}</small></button>`).join(''):'<p class="catalog-empty">没有匹配的家具</p>';
 }
 function renderPlan(){
   if(!view)return;
@@ -111,14 +114,15 @@ function renderPlan(){
     const ref=doc.calibrationReference;
     if(ref&&!points.length)html+=`<g pointer-events="none"><line x1="${ref.start.x}" y1="${ref.start.z}" x2="${ref.end.x}" y2="${ref.end.z}" stroke="#326e6b" stroke-width="3" stroke-dasharray="6 4"/><text x="${(ref.start.x+ref.end.x)/2+8}" y="${(ref.start.z+ref.end.z)/2}" font-size="${font}" fill="#23584f" stroke="white" stroke-width="3" paint-order="stroke">上次参考：${meters(ref.millimeters)} m</text></g>`;
   }else{
-  for(const r of doc.rooms){
+  for(const [index,r] of doc.rooms.entries()){
     const active=selection?.id===r.id;
-    html+=`<polygon data-kind="room" data-id="${esc(r.id)}" points="${roomPolygon(r).map(p=>`${p.x},${p.z}`).join(' ')}" fill="${r.material==='plain'?'#eef1e9':`url(#${r.material})`}" stroke="${active?'#c6783f':'#d5dfd9'}" stroke-width="${active?3:1}"/>`;
+    html+=`<defs><pattern id="floor-${index}" href="#${r.material==='tile'?'tile':'wood'}" patternTransform="rotate(${r.floorAngle??0})"/></defs><polygon data-kind="room" data-id="${esc(r.id)}" points="${roomPolygon(r).map(p=>`${p.x},${p.z}`).join(' ')}" fill="${r.material==='plain'?'#eef1e9':`url(#floor-${index})`}" stroke="${active?'#c6783f':'#d5dfd9'}" stroke-width="${active?3:1}"/>`;
   }
   if(doc.image&&$('show-image').checked)html+=`<image href="${doc.image}" width="${doc.plan.image_size.width}" height="${doc.plan.image_size.height}" opacity=".30" pointer-events="none"/>`;
   for(const w of doc.plan.walls){
     const active=selection?.id===w.id;
     html+=`<g data-kind="wall" data-id="${esc(w.id)}"><line x1="${w.x1}" y1="${w.z1}" x2="${w.x2}" y2="${w.z2}" stroke="transparent" stroke-width="${Math.max(w.thickness,14)}"/><line x1="${w.x1}" y1="${w.z1}" x2="${w.x2}" y2="${w.z2}" stroke="${active?'#c4844e':'#465d59'}" stroke-width="${w.thickness}" stroke-linecap="square"/></g>`;
+    if(active)for(const end of [1,2])html+=`<text x="${w[`x${end}`]}" y="${w[`z${end}`]-w.thickness-8}" font-size="${font}" fill="#a85f2e" stroke="white" stroke-width="3" paint-order="stroke">${end===1?'起点':'终点'}</text>`;
     if(tool==='connect')for(const end of [1,2])html+=`<circle cx="${w[`x${end}`]}" cy="${w[`z${end}`]}" r="${Math.max(5,view.width/180)}" fill="#fff" stroke="#326e6b" stroke-width="2" pointer-events="none"/>`;
     const length=Math.hypot(w.x2-w.x1,w.z2-w.z1);
     if($('show-dimensions').checked&&length*unit>=1100){const angle=Math.atan2(w.z2-w.z1,w.x2-w.x1)*180/Math.PI;
@@ -156,6 +160,12 @@ function renderProperties(){
   else if(kind==='opening')html+=`<div class="field-grid">${field('距墙起点 / mm','offset',item.offset,0,100000000)}${field('宽度 / mm','width',item.width,100,100000)}${field('高度 / mm','height',item.height,100,10000)}${item.type==='window'?field('窗台高 / mm','sillHeight',item.sillHeight,0,10000):''}${field('开启角度 / °','openAngle',item.openAngle??(item.type==='door'?90:0),0,90)}</div><label>铰链位置<select id="prop-hinge"><option value="start" ${item.hinge!=='end'?'selected':''}>墙起点侧</option><option value="end" ${item.hinge==='end'?'selected':''}>墙终点侧</option></select></label><label>开启侧（沿墙起点走向终点）<select id="prop-swing"><option value="1" ${(item.swing??1)===1?'selected':''}>右侧</option><option value="-1" ${item.swing===-1?'selected':''}>左侧</option></select></label><p class="tip" style="padding:0">位置按洞口中心计算；二维拖动可沿墙移动。角度 0° 表示关闭；窗按单扇平开示意。</p>`;
   else if(kind==='room')html+=`<label>区域名称<input id="prop-name" value="${esc(item.name)}" maxlength="40"></label><label>地面<select id="prop-material"><option value="wood" ${item.material==='wood'?'selected':''}>木地板</option><option value="tile" ${item.material==='tile'?'selected':''}>地砖</option><option value="plain" ${item.material==='plain'?'selected':''}>素色</option></select></label><p>${doc.calibrated?(roomArea(item)*doc.mmPerPixel**2/1e6).toFixed(2)+' m²':'标定后显示区域面积'}</p><p class="tip" style="padding:0">${item.source==='walls'?'按墙中心线围合计算，非净使用面积。轮廓随墙更新，请移动墙体调整房间。':'手工区域面积。'}</p>`;
   else html+=`<p>${formatLength(Math.hypot(item.x2-item.x1,item.z2-item.z1))}</p>`;
+  if(kind==='wall'){
+    for(const [side,label] of [['left','左侧'],['right','右侧']]){const f=wallFinish(item,side);html+=`<fieldset><legend>${label}墙面 · 沿起点走向终点</legend><label>材质<select id="prop-${side}-material">${FINISHES.map(([k,n])=>`<option value="${k}" ${f.material===k?'selected':''}>${n}</option>`).join('')}</select></label><label>颜色<input id="prop-${side}-color" type="color" value="${f.color}"></label></fieldset>`;}
+    const s=skirting(item);html+=`<fieldset><legend>两侧踢脚线</legend><label class="check"><input id="prop-skirting-enabled" type="checkbox" ${s.enabled?'checked':''}>显示踢脚线</label>${field('踢脚线高度 / mm','skirting-height',s.height,20,300)}<label>颜色<input id="prop-skirting-color" type="color" value="${s.color}"></label></fieldset>`;
+  }
+  if(kind==='room'){const c=ceiling(item);html+=`${field('地面铺贴方向 / °','floorAngle',item.floorAngle??0,0,360)}<fieldset><legend>平顶天花</legend><label class="check"><input id="prop-ceiling-enabled" type="checkbox" ${c.enabled?'checked':''}>显示天花</label>${field('天花降高 / mm','ceiling-drop',c.drop,0,1000)}<label>颜色<input id="prop-ceiling-color" type="color" value="${c.color}"></label><p class="tip">室内视角且使用实际高度时显示。降高从房间最低墙顶计算，手工区域按 3000 mm 墙高。</p></fieldset>`;}
+  if(kind==='furniture'&&item.type==='model')html+='<p class="tip">GLB 保留原模型材质；颜色仅用于二维占位符。宽深高可分别缩放，原始比例需自行保留。</p>';
   html+='<div class="property-actions">';if(kind!=='measurement')html+='<button class="primary" type="submit">应用修改</button>';
   if(kind==='furniture')html+='<button id="rotate" type="button">旋转 90°</button><button id="duplicate" type="button">复制</button>';
   html+='<button id="delete" class="danger" type="button">删除</button></div></form>';
@@ -171,9 +181,11 @@ function renderProperties(){
       const ends=Object.fromEntries(['x1','z1','x2','z2'].map(k=>[k,Number($(`prop-${k}`).value)/doc.mmPerPixel]));
       const length=Number($('prop-length').value);if(Math.abs(length-wallLength(item)*doc.mmPerPixel)>.01){const angle=Math.atan2(ends.z2-ends.z1,ends.x2-ends.x1);ends.x2=ends.x1+Math.cos(angle)*length/doc.mmPerPixel;ends.z2=ends.z1+Math.sin(angle)*length/doc.mmPerPixel;}
       moveWallEndpoints(doc,item.id,ends);item.thickness=Number($('prop-thickness').value)/doc.mmPerPixel;item.height=Number($('prop-height').value);item.bearing=$('prop-bearing').checked;
+      for(const side of ['left','right'])item[side+'Finish']={material:$(`prop-${side}-material`).value,color:$(`prop-${side}-color`).value};
+      item.skirting={enabled:$('prop-skirting-enabled').checked,height:Number($('prop-skirting-height').value),color:$('prop-skirting-color').value};
     }else if(kind==='opening'){
       Object.assign(item,Object.fromEntries(['offset','width','height','openAngle'].map(k=>[k,Number($(`prop-${k}`).value)])),{sillHeight:item.type==='window'?Number($('prop-sillHeight').value):0,hinge:$('prop-hinge').value,swing:Number($('prop-swing').value)});
-    }else if(kind==='room'){item.name=$('prop-name').value||'房间';item.material=$('prop-material').value;}
+    }else if(kind==='room'){item.name=$('prop-name').value||'房间';item.material=$('prop-material').value;item.floorAngle=Number($('prop-floorAngle').value);item.ceiling={enabled:$('prop-ceiling-enabled').checked,drop:Number($('prop-ceiling-drop').value),color:$('prop-ceiling-color').value};}
     if(commit(before))message('对象已更新，二维和三维已同步。');
   });
   $('delete').onclick=removeSelected;if($('rotate'))$('rotate').onclick=rotateSelected;if($('duplicate'))$('duplicate').onclick=duplicateSelected;
@@ -185,10 +197,10 @@ function render(refit=false){
   $('counts').textContent=`${doc.plan.walls.length} 段墙 · ${doc.openings.length} 个门窗 · ${doc.furniture.length} 件家具 · ${doc.rooms.length} 个区域`;
   $('auto-rooms').checked=doc.autoRooms;
   $('undo').disabled=!history.past.length;$('redo').disabled=!history.future.length;
-  renderIssues();if(refit||!view)fitPlan();else renderPlan();renderProperties();three?.update(doc,selection,refit);
+  renderCatalog();renderIssues();if(refit||!view)fitPlan();else renderPlan();renderProperties();three?.update(doc,selection,refit);
 }
 function ensureScale(){if(doc.image&&!doc.calibrated){setTool('calibrate');return false;}return true;}
-function addFurniture(type,p){if(!ensureScale())return;const before=clone(doc),item=newFurniture(type,p.x,p.z);Object.assign(item,snapFurniture(item,doc,$('snap-grid').checked,$('snap-wall').checked));doc.furniture.push(item);selection={kind:'furniture',id:item.id};setTool('select');if(commit(before))message(`已放置${item.name}，可拖动或修改尺寸。`);}
+function addFurniture(type,p){if(!ensureScale())return;const asset=type?.startsWith('model:')?doc.models.find(m=>m.id===type.slice(6)):null;if(type?.startsWith('model:')&&!asset){message('该模型已不在当前方案中，请重新选择。',true);return;}const before=clone(doc),item=asset?{id:uid(),type:'model',modelId:asset.id,name:asset.name,width:asset.width,depth:asset.depth,height:asset.height,color:'#9caeba',x:p.x,z:p.z,rotation:0,elevation:0,locked:false}:newFurniture(type,p.x,p.z);Object.assign(item,snapFurniture(item,doc,$('snap-grid').checked,$('snap-wall').checked));doc.furniture.push(item);selection={kind:'furniture',id:item.id};setTool('select');if(commit(before))message(`已放置${item.name}，可拖动或修改尺寸。`);}
 function addOpening(type,p){
   if(!ensureScale())return;
   const hit=nearestWall(p,doc.plan.walls,180/doc.mmPerPixel);if(!hit){message('请点击墙线附近放置门窗。',true);return;}
@@ -285,10 +297,26 @@ svg.addEventListener('pointercancel',()=>{if(gesture?.before){doc=gesture.before
 svg.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY>0?1.12:.89,point(e));},{passive:false});
 function zoom(factor,anchor={x:view.x+view.width/2,z:view.y+view.height/2}){const w=view.width*factor;if(w<80||w>30000)return;view={x:anchor.x-(anchor.x-view.x)*factor,y:anchor.z-(anchor.z-view.y)*factor,width:w,height:view.height*factor};renderPlan();}
 svg.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';});
-svg.addEventListener('drop',e=>{e.preventDefault();const type=e.dataTransfer.getData('application/x-floorplan-furniture');if(CATALOG.some(f=>f.type===type))addFurniture(type,point(e));});
+svg.addEventListener('drop',e=>{e.preventDefault();const type=e.dataTransfer.getData('application/x-floorplan-furniture');if(catalogEntries().some(f=>f.key===type))addFurniture(type,point(e));});
 $('catalog-items').addEventListener('click',e=>{const card=e.target.closest('[data-type]');if(card)setTool('place',card.dataset.type);});
 $('catalog-items').addEventListener('dragstart',e=>{const card=e.target.closest('[data-type]');if(card){e.dataTransfer.setData('application/x-floorplan-furniture',card.dataset.type);e.dataTransfer.effectAllowed='copy';if(mode==='3d')setMode('2d');}});
 $('category').onchange=renderCatalog;
+$('catalog-search').oninput=renderCatalog;
+$('prune-models').onclick=()=>edit(()=>{doc.models=doc.models.filter(m=>doc.furniture.some(f=>f.modelId===m.id));if(placing?.startsWith('model:'))setTool('select');},'已清理未使用模型，可撤销恢复。');
+const readDataURL=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('文件读取失败。'));reader.readAsDataURL(file);});
+$('model-file').onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;e.target.disabled=true;const start=doc;message('正在读取 GLB 模型…');
+  try{
+    if(!three)throw new Error('GLB 导入需要可用的三维视图。');
+    if(!/\.glb$/i.test(file.name)||file.size>MODEL_LIMIT)throw new Error('请选择不超过 4 MB 的 GLB 文件。');
+    inspectGLB(await file.arrayBuffer());const data=await readDataURL(file),asset={id:uid(),name:file.name.replace(/\.glb$/i,'').slice(0,40)||'导入模型',data:'data:model/gltf-binary;base64,'+data.split(',')[1],width:1000,depth:1000,height:1000};
+    validateDocument({...start,models:[...(start.models||[]),asset]});
+    const loaded=await three.models.load(asset);Object.assign(asset,loaded.dimensions);
+    if(doc!==start)throw new Error('读取期间方案已变化，请重新导入模型。');
+    const before=clone(doc);doc.models.push(asset);
+    if(commit(before)){$('category').value='导入模型';$('catalog-search').value='';setTool('place',`model:${asset.id}`);message(`模型「${asset.name}」已导入，尺寸 ${asset.width} × ${asset.depth} × ${asset.height} mm；请核对尺寸后放置。`);}
+  }catch(error){three?.models.retain(doc.models||[]);message(`模型导入失败：${error.message}`,true);}finally{e.target.disabled=false;e.target.value='';}
+};
 $('check-layout').onchange=()=>render();
 $('layout-issues').onclick=e=>{const button=e.target.closest('[data-issue]');if(!button)return;const issue=warnings.issues[Number(button.dataset.issue)],ids=doc.furniture.filter(f=>issue.ids.includes(f.id)).map(f=>f.id);if(!ids.length)return;selection={kind:'furniture',id:ids[0],ids};setTool('select');setMode('2d');render(true);message(issue.label+'；提示基于外接尺寸，请结合实际模型判断。');};
 $('recognize-rooms').onclick=()=>{
@@ -337,12 +365,13 @@ document.addEventListener('keydown',e=>{
 });
 function download(data,name,type){const url=typeof data==='string'&&data.startsWith('data:')?data:URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();if(url.startsWith('blob:'))setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const filename=()=>doc.title.replace(/[<>:"/\\|?*]/g,'_');
-$('export').onclick=()=>{download(JSON.stringify(doc,null,2),`${filename()}.json`,'application/json');message('方案已导出，包含户型、家具、尺寸、区域和底图。');};
+$('export').onclick=()=>{download(JSON.stringify(doc),`${filename()}.json`,'application/json');message('方案已导出，包含户型、家具、模型、硬装设置和底图。');};
 $('export-image').onclick=()=>{if(three){download(three.screenshot(),`${filename()}-3D.png`,'image/png');message('三维效果图已保存。');}};
 $('demo').onclick=()=>{const before=clone(doc);doc=demoDocument();selection=null;setTool('select');if(commit(before,true))message('已加载可编辑示例。示例家具为人工摆放，可撤销返回原方案。');};
 $('project-file').onchange=async e=>{
   const file=e.target.files[0];if(!file)return;
-  try{if(file.size>15*1024*1024)throw new Error('方案文件过大，最大支持 15 MB。');const next=validateDocument(JSON.parse(await file.text())),before=clone(doc);doc=next;selection=null;setTool('select');if(commit(before,true))message('方案已导入，可以继续编辑。');}catch(error){message(`导入失败：${error.message}`,true);}finally{e.target.value='';}
+  const start=doc;e.target.disabled=true;
+  try{if(file.size>15*1024*1024)throw new Error('方案文件过大，最大支持 15 MB。');const next=validateDocument(JSON.parse(await file.text()));if(next.models.length){if(!three)throw new Error('含 GLB 的方案需要可用的三维视图。');for(const asset of next.models)await three.models.load(asset);}if(doc!==start)throw new Error('读取期间方案已变化，请重新导入。');const before=clone(doc);doc=next;selection=null;setTool('select');if(commit(before,true))message('方案已导入，可以继续编辑。');}catch(error){three?.models.retain(doc.models||[]);message(`导入失败：${error.message}`,true);}finally{e.target.value='';e.target.disabled=false;}
 };
 async function previewImage(file){const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();const scale=Math.min(1,1600/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.88);}finally{URL.revokeObjectURL(url);}}
 $('image-file').onchange=async e=>{

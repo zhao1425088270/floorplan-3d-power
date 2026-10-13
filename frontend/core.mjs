@@ -1,4 +1,6 @@
 import {openingError,roomArea,polygonBounds,roomPolygon,isSimplePolygon,wallLength} from './plan.mjs';
+import {validateModels} from './models.mjs';
+import {validateFinishes} from './finishes.mjs';
 
 export const CATALOG = [
   {type:'sofa',name:'三人沙发',category:'客厅',width:2400,depth:900,height:850,color:'#7f9f99'},
@@ -25,7 +27,7 @@ export const normalizeAngle = value => ((Number(value)%360)+360)%360;
 export function emptyDocument() {
   return {version:1,title:'未命名方案',mmPerPixel:10,calibrated:false,image:null,
     plan:{walls:[],bounds:{x:0,y:0,width:1000,height:800},image_size:{width:1000,height:800}},
-    furniture:[],rooms:[],measurements:[],openings:[],autoRooms:false};
+    furniture:[],rooms:[],measurements:[],openings:[],models:[],autoRooms:false};
 }
 export function newFurniture(type,x,z) {
   const entry = CATALOG.find(item => item.type===type);
@@ -105,7 +107,8 @@ export function validateDocument(value) {
   }
   if(!d.plan.image_size || !['width','height'].every(k=>number(d.plan.image_size[k],1,100000))) throw new Error('图片尺寸不正确。');
   if(d.plan.walls.length>3000 || d.furniture.length>500) throw new Error('方案包含过多对象。');
-  d.rooms ??= []; d.measurements ??= []; d.openings ??= []; d.autoRooms=!!d.autoRooms;
+  d.rooms ??= []; d.measurements ??= []; d.openings ??= []; d.models ??= []; d.autoRooms=!!d.autoRooms;
+  const modelIds=validateModels(d.models);
   if(!Array.isArray(d.rooms) || !Array.isArray(d.measurements) || d.rooms.length>200 || d.measurements.length>500) throw new Error('区域或测量数据不正确。');
   if(!Array.isArray(d.openings)||d.openings.length>500)throw new Error('门窗最多支持 500 个。');
   if(d.autoRooms&&d.plan.walls.length>600)throw new Error('自动房间模式最多支持 600 段墙。');
@@ -126,7 +129,7 @@ export function validateDocument(value) {
     if(o.openAngle!==undefined&&!number(o.openAngle,0,90))throw new Error('门窗开启角度应为 0–90°。');
   }
   for(const item of d.furniture) {
-    if(!CATALOG.some(entry=>entry.type===item.type) || !['width','depth','height'].every(k=>number(item[k],10,10000)) || !['x','z'].every(k=>number(item[k],-100000,100000)) || !number(item.rotation,-36000,36000) || !/^#[0-9a-f]{6}$/i.test(item.color)) throw new Error('家具尺寸或类型不正确。');
+    if(!(item.type==='model'?modelIds.has(item.modelId):CATALOG.some(entry=>entry.type===item.type)) || !['width','depth','height'].every(k=>number(item[k],10,10000)) || !['x','z'].every(k=>number(item[k],-100000,100000)) || !number(item.rotation,-36000,36000) || !/^#[0-9a-f]{6}$/i.test(item.color)) throw new Error('家具尺寸、类型或模型引用不正确。');
     item.rotation=normalizeAngle(item.rotation); item.name=String(item.name||'家具').slice(0,40); item.locked=!!item.locked;
     if(item.elevation!==undefined&&!number(item.elevation,0,10000))throw new Error('家具离地高度应为 0–10000 mm。');
     if(item.groupId!==undefined&&(typeof item.groupId!=='string'||!item.groupId.length||item.groupId.length>80))throw new Error('家具组合编号不正确。');
@@ -143,6 +146,8 @@ export function validateDocument(value) {
   for(const m of d.measurements) if(!['x1','z1','x2','z2'].every(k=>number(m[k],-100000,100000))) throw new Error('测量数据不正确。');
   if(d.image!==null && (typeof d.image!=='string' || d.image.length>12000000 || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(d.image))) throw new Error('方案底图格式不正确。');
   d.title=String(d.title||'家装方案').slice(0,80); d.calibrated=!!d.calibrated;
+  validateFinishes(d);
+  if(d.models.length&&new TextEncoder().encode(JSON.stringify(d)).length>15*1024*1024)throw new Error('方案总大小超过 15 MB，请减少底图或模型大小。');
   return d;
 }
 export function demoDocument() {

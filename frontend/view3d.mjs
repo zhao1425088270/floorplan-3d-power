@@ -3,10 +3,13 @@ import {makeFurniture} from './furniture.mjs';
 import {Surfaces} from './surfaces.mjs';
 import {documentBounds,roomArea,roomInteriorPoint} from './plan.mjs';
 import {makeWall,roomGeometry} from './building.mjs';
+import {ModelLibrary} from './models.mjs';
+import {ceiling,roomHeight} from './finishes.mjs';
 const T=window.THREE;
 export class View3D {
-  constructor(element,onSelect){
+  constructor(element,onSelect,onError=()=>{}){
     this.element=element;this.low=false;this.doc=null;this.mode='iso';this.quality=true;this.dirty=true;this.lighting='day';
+    this.models=new ModelLibrary(T);this.onError=onError;
     this.scene=new T.Scene();this.scene.background=new T.Color('#e8e7e2');
     this.renderer=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
     this.renderer.outputEncoding=T.sRGBEncoding;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.05;
@@ -46,21 +49,22 @@ export class View3D {
     }else this.renderer.render(this.scene,this.camera);
   }
   clear(){
-    this.root.traverse(o=>{o.geometry?.dispose();for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){for(const map of new Set([m.map,m.bumpMap]))if(map&&!this.surfaces.owned.has(map))map.dispose();m.dispose();}});
+    this.root.traverse(o=>{if(o.userData.modelShared)return;o.geometry?.dispose();for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){for(const map of new Set([m.map,m.bumpMap]))if(map&&!this.surfaces.owned.has(map))map.dispose();m.dispose();}});
     this.root.clear();this.roomLights.clear();this.ceilings.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});this.ceilings.clear();
   }
   update(doc,selection,refit=false){
-    this.doc=doc;this.clear();const b=documentBounds(doc),s=doc.mmPerPixel/1000,cx=b.x+b.width/2,cz=b.y+b.height/2;
+    this.doc=doc;this.selection=selection;this.clear();this.models.retain(doc.models||[]);
+    for(const asset of doc.models||[])if(!this.models.cache.has(asset.data))this.models.load(asset).then(()=>{if(this.doc.models?.some(m=>m.data===asset.data))this.update(this.doc,this.selection);}).catch(error=>this.onError(`模型「${asset.name}」加载失败：${error.message}`));
+    const b=documentBounds(doc),s=doc.mmPerPixel/1000,cx=b.x+b.width/2,cz=b.y+b.height/2;
     const material=(kind,color)=>this.surfaces.material(kind,color);
     const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.receiveShadow=true;m.castShadow=true;this.root.add(m);return m;};
     box(b.width*s+.3,.10,b.height*s+.3,0,-.075,0,material('plaster','#e5e1d8')).castShadow=false;
     for(const r of doc.rooms){
-      const mat=material(r.material==='plain'?'plaster':r.material,'#ffffff');
-      if(mat.map){mat.map=mat.map.clone();mat.map.needsUpdate=true;const tile=r.material==='tile'?.65:2.4;mat.map.repeat.set(1/tile,1/tile);mat.bumpMap=mat.map;}
+      const mat=this.surfaces.finish(r.material==='plain'?'plaster':r.material,'#ffffff',1,1,-(r.floorAngle??0));
       const mesh=new T.Mesh(roomGeometry(T,r,s,cx,cz),mat);mesh.position.y=.006;mesh.receiveShadow=true;mesh.userData={kind:'room',id:r.id};this.root.add(mesh);
-      const roomWalls=doc.plan.walls.filter(w=>r.wallIds?.includes(w.id)),height=roomWalls.length?Math.min(...roomWalls.map(w=>w.height??3000))/1000:3;
-      const ceilingMaterial=material('plaster','#f7f4ef');ceilingMaterial.side=T.DoubleSide;
-      const ceiling=new T.Mesh(roomGeometry(T,r,s,cx,cz),ceilingMaterial);ceiling.position.y=height+.02;this.ceilings.add(ceiling);
+      const top=ceiling(r),height=(roomHeight(r,doc)-(top.enabled?top.drop:0))/1000;
+      if(top.enabled){const ceilingMaterial=material('plaster',top.color);ceilingMaterial.side=T.DoubleSide;
+      const mesh=new T.Mesh(roomGeometry(T,r,s,cx,cz),ceilingMaterial);mesh.position.y=height;this.ceilings.add(mesh);}
       const center=roomInteriorPoint(r);
       if(this.roomLights.children.length<8){const lamp=new T.PointLight(0xffe4c0,this.lighting==='warm'?.65:.12,Math.max(r.width,r.depth)*s*1.8,2);lamp.position.set((center.x-cx)*s,Math.max(.1,height-.35),(center.z-cz)*s);this.roomLights.add(lamp);}
     }
@@ -68,8 +72,8 @@ export class View3D {
       const wall=makeWall(T,w,doc,this.surfaces,this.low,selection?.id);wall.position.set((w.x1-cx)*s,0,(w.z1-cz)*s);this.root.add(wall);
     }
     for(const f of [...doc.furniture].sort((a,b)=>(a.type==='rug'?-1:0)-(b.type==='rug'?-1:0))){
-      const object=makeFurniture(T,f,this.surfaces);
-      if(this.low){const height=new T.Box3().setFromObject(object).max.y;if(height>1.05)object.scale.y=1.05/height;}
+      const object=f.type==='model'?this.models.instance(doc.models.find(m=>m.id===f.modelId),f)||makeFurniture(T,{...f,type:'wardrobe',color:'#b7b7b7'},this.surfaces):makeFurniture(T,f,this.surfaces);
+      if(this.low){const height=new T.Box3().setFromObject(object).max.y;if(height>1.05)object.scale.y*=1.05/height;}
       object.position.set((f.x-cx)*s,.008+(f.elevation??0)/1000,(f.z-cz)*s);this.root.add(object);
       if(selection?.kind==='furniture'&&(selection.ids||[selection.id]).includes(f.id))this.root.add(new T.BoxHelper(object,0xc9874c));
     }

@@ -35,6 +35,11 @@ export class Surfaces {
     if(kind==='ceramic'){options.roughness=.18;options.clearcoat=.4;}
     return new T.MeshPhysicalMaterial(options);
   }
+  finish(kind,color,width=1,height=1,angle=0){
+    const mat=this.material(kind,color);
+    if(mat.map){const map=mat.map.clone(),tile=kind==='tile'?.65:kind==='wood'?2.4:1;map.needsUpdate=true;map.repeat.set(width/tile,height/tile);map.rotation=angle*Math.PI/180;mat.map=mat.bumpMap=map;}
+    return mat;
+  }
   environment(){
     const T=this.T,c=document.createElement('canvas');c.width=1024;c.height=512;const ctx=c.getContext('2d');
     const gradient=ctx.createLinearGradient(0,0,0,512);gradient.addColorStop(0,'#dfe9f4');gradient.addColorStop(.48,'#fcf9f0');gradient.addColorStop(.55,'#d5cec0');gradient.addColorStop(1,'#777e7d');ctx.fillStyle=gradient;ctx.fillRect(0,0,1024,512);

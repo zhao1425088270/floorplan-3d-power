@@ -49,7 +49,8 @@
 
 | 层级 | 技术 | 用途 |
 | --- | --- | --- |
-| 前端界面 | HTML、CSS、原生 JavaScript ES Modules | 编辑工作台与交互 |
+| 前端界面 | React 19、Vite 7、CSS | 工作台布局、工具分类与构建 |
+| 编辑引擎 | 原生 JavaScript ES Modules | SVG 交互、方案状态与 Three.js 联动 |
 | 二维画布 | SVG | 墙线、家具符号、区域、尺寸标注 |
 | 三维场景 | Three.js 0.126.1、WebGL | 模型、材质、相机与漫游 |
 | 渲染增强 | EffectComposer、SSAOPass、PMREM | 接触阴影与预过滤环境反射 |
@@ -57,20 +58,23 @@
 | 后端 | Python、Flask、Flask-CORS | 图片上传与识别接口 |
 | 图像处理 | OpenCV、NumPy | 提取墙线、坐标和厚度 |
 
-项目没有使用 Vue、React、数据库或 AI 识别模型。启动前端不需要 Node.js。Three.js 及渲染组件已放在 `frontend/vendor/`，页面加载无需访问 CDN。
+前端已采用 React 工作台外壳，现有 SVG 编辑引擎和 Three.js 场景通过稳定的 DOM 容器接入；属性表单和方案状态暂由原编辑引擎管理，后续可逐步迁移为 React 组件。Python 后端与 JSON 方案格式保持兼容。Three.js 及渲染组件放在 `frontend/vendor/`，生产构建包含所有运行依赖，页面无需访问 CDN。
+
+界面采用左侧工具分类与家具库、中央画布、右侧实时三维预览与属性面板。顶部可切换 2D、3D 和漫游；「渲染预览」打开现有实时 Three.js 场景，不是离线路径追踪。文件操作位于「户型」，双视图和吸附选项位于画布上方「显示与吸附」。小屏幕下右侧小预览收起，可从顶部打开完整 3D 视图。
 
 ## 本地启动（Windows / PowerShell）
 
-准备 Python 和支持 WebGL 的现代浏览器。下面以项目目录 `D:\wang_work\floorplan-3d-project` 为例；如果项目放在其他位置，请替换路径。
+准备 Python、Node.js 22.12+（或 20.19+）和支持 WebGL 的现代浏览器。下面以项目目录 `D:\wang_work\floorplan-3d-power` 为例；如果项目放在其他位置，请替换路径。
 
 ### 1. 首次安装依赖
 
 在项目根目录执行；已有可用 `.venv` 时无需重新创建。
 
 ```powershell
-cd D:\wang_work\floorplan-3d-project
+cd D:\wang_work\floorplan-3d-power
 python -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install -r .\backend\requirements.txt
+npm ci
 ```
 
 ### 2. 启动后端
@@ -78,7 +82,7 @@ python -m venv .venv
 打开一个 PowerShell 窗口：
 
 ```powershell
-cd D:\wang_work\floorplan-3d-project\backend
+cd D:\wang_work\floorplan-3d-power\backend
 & ..\.venv\Scripts\python.exe -m flask --app app run --host 127.0.0.1 --port 5000
 ```
 
@@ -87,13 +91,13 @@ cd D:\wang_work\floorplan-3d-project\backend
 再打开一个 PowerShell 窗口：
 
 ```powershell
-cd D:\wang_work\floorplan-3d-project\frontend
-& ..\.venv\Scripts\python.exe -m http.server 8000 --bind 127.0.0.1
+cd D:\wang_work\floorplan-3d-power
+npm run dev
 ```
 
 浏览器访问 **[http://127.0.0.1:8000/](http://127.0.0.1:8000/)**。保持两个窗口运行，按 `Ctrl+C` 停止对应服务。
 
-前端使用 ES Modules，请通过 HTTP 服务访问，不要直接双击 `index.html`。上述命令用于本地开发与演示。后端接口为 `http://localhost:5000/upload`，地址目前写在 `frontend/app.js` 中；更换后端端口时需同步修改。
+前端开发需要 Vite 编译 JSX，不再直接用 Python 服务源代码目录。生产构建执行 `npm run build`，输出到 `dist/`；可运行 `npm run preview` 在同一端口预览构建结果，或用静态 HTTP 服务托管 `dist/`。不要同时启动 dev 和 preview 占用同一端口。后端接口仍为 `http://localhost:5000/upload`，地址写在 `frontend/app.js` 中。
 
 ## 使用流程
 
@@ -174,7 +178,9 @@ floorplan-3d-project/
 │   ├── parse_floorplan.py     # 墙线识别
 │   └── requirements.txt
 ├── frontend/
-│   ├── index.html             # 工作台入口
+│   ├── index.html             # HTML 入口与本地 Three.js 依赖
+│   ├── main.jsx               # React 挂载与编辑引擎启动
+│   ├── workbench.jsx          # React 工作台、分类面板与稳定画布容器
 │   ├── editor.css             # 布局与样式
 │   ├── app.js                 # 编辑交互与视图联动
 │   ├── core.mjs               # 方案模型、家具目录、标定、历史
@@ -190,6 +196,8 @@ floorplan-3d-project/
 │   └── vendor/                # Three.js 及官方渲染组件、许可证
 ├── docs/images/               # README 产品截图
 ├── uploads/                   # 运行时上传数据
+├── package.json               # 前端依赖和开发 / 构建命令
+├── vite.config.js             # 前端构建与本地 vendor 资源
 ├── DESIGNER.md                # 编辑器详细说明
 ├── RENDERING.md               # 渲染实现、参考与限制
 └── README.md

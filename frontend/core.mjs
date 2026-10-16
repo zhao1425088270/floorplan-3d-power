@@ -151,13 +151,21 @@ export function validateDocument(value) {
   return d;
 }
 export function demoDocument() {
-  const d=emptyDocument(); d.title='三室家装 · 示例方案'; d.calibrated=true;
-  const segments=[[80,80,820,80],[820,80,820,660],[820,660,80,660],[80,660,80,80],[330,80,330,320],[80,320,250,320],[300,320,560,320],[560,80,560,420],[620,320,820,320],[560,420,680,420],[740,420,820,420],[330,380,330,500],[80,500,250,500]];
-  d.plan.walls=segments.map((s,i)=>({id:`wall-${i}`,...Object.fromEntries(['x1','z1','x2','z2'].map((k,n)=>[k,s[n]])),thickness:18}));
-  d.plan.bounds={x:70,y:70,width:760,height:600}; d.plan.image_size={width:900,height:750};
-  d.rooms=[{id:'r1',name:'主卧',x:90,z:90,width:230,depth:220,material:'wood'},{id:'r2',name:'次卧',x:340,z:90,width:210,depth:220,material:'wood'},{id:'r3',name:'儿童房',x:570,z:90,width:240,depth:220,material:'wood'},{id:'r4',name:'卫浴',x:570,z:330,width:240,depth:80,material:'tile'},{id:'r5',name:'厨房',x:90,z:330,width:230,depth:160,material:'tile'},{id:'r6',name:'客餐厅',x:340,z:430,width:470,depth:220,material:'wood'}];
-  const put=(type,x,z,rotation=0)=>{const f=newFurniture(type,x,z);f.rotation=rotation;d.furniture.push(f);};
-  put('bed',195,203); put('singlebed',432,208); put('singlebed',690,210); put('wardrobe',196,120);
-  put('sofa',650,588); put('coffee',650,495); put('rug',650,530); put('tv',650,446); put('dining',398,557); put('chair',398,478); put('chair',398,631,180); put('counter',178,374); put('fridge',268,441); put('toilet',616,365); put('sink',746,367); put('plant',786,609);
+  const d=emptyDocument(); d.title='两室一厅 · 示例方案'; d.calibrated=true;
+  const segments=[[100,100,1080,100],[1080,100,1080,820],[1080,820,100,820],[100,820,100,100],[680,100,680,820],[680,480,1080,480],[100,540,680,540],[410,540,410,820]];
+  d.plan.walls=segments.map((s,i)=>({id:`wall-${i}`,...Object.fromEntries(['x1','z1','x2','z2'].map((k,n)=>[k,s[n]])),thickness:16}));
+  d.plan.bounds={x:92,y:92,width:996,height:736}; d.plan.image_size={width:1180,height:920};
+  d.rooms=[{id:'r1',name:'客厅',x:108,z:108,width:564,depth:424,material:'wood'},{id:'r2',name:'主卧',x:688,z:108,width:384,depth:364,material:'wood'},{id:'r3',name:'次卧',x:688,z:488,width:384,depth:324,material:'wood'},{id:'r4',name:'厨房',x:108,z:548,width:294,depth:264,material:'tile'},{id:'r5',name:'卫生间',x:418,z:548,width:254,depth:264,material:'tile'}];
+  const opening=(type,wall,offset,width)=>{const item=newOpening(type,d.plan.walls[wall],offset,d.mmPerPixel);item.width=width;d.openings.push(item);};
+  opening('door',3,4800,1000);opening('door',4,2200,900);opening('door',5,1650,900);opening('door',6,1300,900);opening('door',6,4200,850);
+  opening('window',0,3100,1800);opening('window',0,7750,1600);opening('window',1,5500,1400);
+  const put=(type,x,z,rotation=0,overrides={})=>{const f=newFurniture(type,x,z);Object.assign(f,{rotation},overrides);d.furniture.push(f);};
+  put('rug',365,330,0,{width:2800,depth:1900,color:'#d6e6f8'});
+  put('sofa',365,465,0,{color:'#b7d5f5'});put('coffee',365,320,0,{color:'#f5f6f7'});
+  put('tv',310,155,0,{color:'#f4f2ed'});put('armchair',590,270,0,{color:'#f4f2ed'});put('plant',625,155);
+  put('bed',875,260,0,{color:'#f2f3f5'});put('wardrobe',1030,345,90,{color:'#f4f2ed'});
+  put('singlebed',970,670,0,{color:'#f2f3f5'});put('desk',745,685,90,{color:'#f4f2ed'});put('plant',760,570);
+  put('counter',255,775,0,{width:2600,color:'#f3f5f5'});put('fridge',155,625,0,{color:'#f3f5f5'});
+  put('toilet',470,745);put('sink',610,605);put('shower',605,750);
   return d;
 }

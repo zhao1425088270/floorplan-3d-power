@@ -1,33 +1,24 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>平面家装 · 布置工作台</title><link rel="stylesheet" href="editor.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>平面家装 · 设计工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23d9eaff'/%3E%3Cpath d='M7 7h18v18H7zM7 16h9V7m0 9v9m0-5h9' fill='none' stroke='%23347bc7' stroke-width='2'/%3E%3C/svg%3E">
+</head>
 <body>
-  <header>
-    <div class="brand"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M4 26V10L15 3L26 10V26H4M15 15V26M4 15H26" fill="none" stroke="currentColor" stroke-width="2"/></svg><div><b>平面家装</b><span>把想法放进户型里</span></div></div>
-    <input id="project-title" aria-label="方案名称" maxlength="80">
-    <div class="file-actions"><button id="new-project">新建户型</button><button id="demo">示例方案</button><button id="backup-cache" hidden>备份原缓存</button><label class="button" for="image-file">上传户型图</label><input id="image-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp" hidden><label class="button" for="project-file">导入方案</label><input id="project-file" type="file" accept=".json" hidden><button id="export" class="primary">导出方案</button></div>
-  </header>
-  <div class="toolbar">
-    <div class="segmented" aria-label="显示模式"><button data-mode="2d" aria-pressed="true">2D 平面</button><button data-mode="3d" aria-pressed="false">3D 场景</button><button data-mode="both" aria-pressed="false">双视图</button></div>
-    <div class="tool-group"><button data-tool="select" aria-pressed="true">选择</button><button data-tool="wall">画墙</button><button data-tool="split">分割墙</button><button data-tool="connect">连接端点</button><button data-tool="door">放门</button><button data-tool="window">放窗</button><button data-tool="room">手工区域</button><button id="recognize-rooms">识别房间</button><button data-tool="measure">测量</button><button data-tool="calibrate">比例标定</button></div>
-    <div class="history"><button id="undo" title="Ctrl+Z">↶ 撤销</button><button id="redo" title="Ctrl+Shift+Z">↷ 重做</button></div>
-  </div>
-  <div id="wall-options" class="wall-options" hidden><label><input id="continuous-walls" type="checkbox" checked>连续画墙</label><label>定长 / mm <input id="wall-length" type="number" min="100" max="100000" step="any" placeholder="留空自由绘制"></label><span>鼠标确定方向 · Shift 画斜墙 · Esc 结束</span></div>
-  <div id="status" role="status" aria-live="polite">正在加载工作台…</div>
-  <main>
-    <aside class="catalog panel"><div class="panel-title"><h2>家具库</h2><span id="catalog-count"></span></div><input id="catalog-search" type="search" aria-label="搜索家具" placeholder="搜索名称或分类"><select id="category" aria-label="家具分类"><option>全部家具</option><option>客厅</option><option>卧室</option><option>餐厨</option><option>卫浴</option><option>导入模型</option></select><div class="model-actions"><label class="button" for="model-file">导入 GLB 模型</label><input id="model-file" type="file" accept=".glb" hidden><button id="prune-models" title="移除当前方案未放置的导入模型，可撤销">清理未使用模型</button></div><div id="catalog-items"></div><p class="tip">点击或拖入平面图放置。GLB 需内嵌贴图，单个 ≤ 4 MB、合计 ≤ 8 MB；暂不支持压缩和骨骼模型。导入内容随方案保存。</p></aside>
-    <section class="workspace panel" id="workspace" data-mode="2d">
-      <div class="view-toolbar"><div class="view-toggles"><label><input id="show-image" type="checkbox" checked>原图</label><label><input id="show-dimensions" type="checkbox" checked>尺寸</label><label><input id="snap-grid" type="checkbox" checked>网格吸附</label><label><input id="snap-wall" type="checkbox" checked>贴墙吸附</label><label><input id="snap-endpoints" type="checkbox" checked>墙端点吸附</label><label><input id="auto-rooms" type="checkbox">房间随墙更新</label></div><span id="scale-state" class="pill"></span></div>
-      <div id="scale-guide" class="scale-guide" hidden><div><b id="scale-guide-title"></b><p id="scale-guide-detail"></p></div><button id="review-scale">复核 / 校正比例</button></div>
-      <div class="views">
-        <div id="plan-pane"><div class="view-label">平面布置 <span>拖动对象 · 滚轮缩放 · 右键平移</span></div><svg id="plan" role="img" aria-label="可编辑的二维户型图" tabindex="0"></svg><div class="zoom"><button id="zoom-out" aria-label="缩小平面图">−</button><button id="fit-plan">适应画布</button><button id="zoom-in" aria-label="放大平面图">+</button></div></div>
-        <div id="scene-pane"><div class="view-label">三维预览 <div><button id="iso">轴测</button><button id="top">俯视</button><button id="interior">室内视角</button><button id="low" aria-pressed="false" title="切换布置预览与实际高度">实际高度</button><button id="export-image">保存效果图</button></div></div><div class="render-settings"><label>光照 <select id="lighting"><option value="day">自然日光</option><option value="warm">暖光氛围</option></select></label><label><input type="checkbox" id="quality" checked>精细阴影</label><span>室内视角优先进入所选房间</span></div><div id="viewport"></div><div id="scene-note" class="scene-note">按设置的墙高和家具尺寸显示；可切换布置预览查看室内。</div></div>
-      </div>
-      <div class="workspace-foot"><span id="counts"></span><span id="save-state">本地方案</span></div>
-    </section>
-    <aside class="inspector panel"><div class="panel-title"><h2>对象属性</h2><span>mm</span></div><div id="properties"></div><section class="layout-checks"><label><input id="check-layout" type="checkbox" checked>检查重叠与穿墙</label><b id="layout-summary" role="status"></b><div id="layout-issues"></div><p>按家具宽深高估算，考虑旋转、离地高度和墙洞；地毯不参与检查。红框为提示，不阻止摆放；不检查门窗开启范围或漫游碰撞。</p></section><div class="help"><b>操作提示</b><p>Shift 点击家具：多选 / 取消选择<br>R 旋转 90° · Delete 删除<br>方向键微调 10 mm<br>Shift + 方向键微调 100 mm<br>Esc 取消当前工具</p><p>先画闭合墙体，再识别房间或放门窗。自动房间面积按墙中心线计算；也可手工划定矩形区域。</p></div><details><summary>参考与说明</summary><p>参考 Blueprint3D、openPlan3D、react-planner 的工作流程，保留本项目的图片识别入口。</p><a href="https://github.com/furnishup/blueprint3d" target="_blank" rel="noreferrer">Blueprint3D ↗</a><a href="https://github.com/laanlabs/openPlan3D" target="_blank" rel="noreferrer">openPlan3D ↗</a><a href="https://github.com/cvdlab/react-planner" target="_blank" rel="noreferrer">react-planner ↗</a></details></aside>
-  </main>
-  <footer>布置示意，不代表施工图。门窗需人工放置，承重属性为人工标记；自动房间面积按墙中心线计算。</footer>
-  <dialog id="calibration-dialog"><form id="calibration-form"><h2>核对户型真实尺寸</h2><p id="calibration-current"></p><div class="distance-input"><label>原图标注的长度<input id="real-distance" type="number" min="0.001" max="1000000" step="any" placeholder="请输入原图上的标注" required></label><label>单位<select id="distance-unit"><option value="mm">毫米 mm</option><option value="cm">厘米 cm</option><option value="m">米 m</option></select></label></div><p id="calibration-preview" class="calibration-preview" aria-live="polite"></p><p class="tip">选取较长、标注清楚的尺寸线更准确。只校正户型比例，家具的宽深高保持实际尺寸；应用后仍可撤销。</p><div class="dialog-actions"><button id="cancel-calibration" type="button">取消</button><button id="apply-calibration" class="primary" type="submit" disabled>应用比例</button></div></form></dialog>
-<script src="vendor/three.min.js"></script><script src="vendor/GLTFLoader.js"></script><script src="vendor/OrbitControls.js"></script><script src="vendor/CopyShader.js"></script><script src="vendor/EffectComposer.js"></script><script src="vendor/ShaderPass.js"></script><script src="vendor/RenderPass.js"></script><script src="vendor/SimplexNoise.js"></script><script src="vendor/SSAOShader.js"></script><script src="vendor/SSAOPass.js"></script><script src="vendor/GammaCorrectionShader.js"></script><script type="module" src="app.js"></script>
-</body></html>
+  <div id="root"></div>
+  <script src="/three.min.js"></script>
+  <script src="/GLTFLoader.js"></script>
+  <script src="/OrbitControls.js"></script>
+  <script src="/CopyShader.js"></script>
+  <script src="/EffectComposer.js"></script>
+  <script src="/ShaderPass.js"></script>
+  <script src="/RenderPass.js"></script>
+  <script src="/SimplexNoise.js"></script>
+  <script src="/SSAOShader.js"></script>
+  <script src="/SSAOPass.js"></script>
+  <script src="/GammaCorrectionShader.js"></script>
+  <script type="module" src="/main.jsx"></script>
+</body>
+</html>

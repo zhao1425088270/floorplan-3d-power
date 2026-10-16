@@ -11,3 +11,6 @@ uploads/*
 !.env.example
 
 *.log
+node_modules/
+dist/
+test-results/
